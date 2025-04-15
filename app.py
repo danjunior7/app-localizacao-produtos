@@ -1,58 +1,69 @@
-
 import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-st.set_page_config(page_title="Localização de Produtos", layout="wide")
+st.set_page_config(page_title="Pesquisa de Localização de Produtos", layout="wide")
 
-st.title("📦 Localização de Produtos nas Lojas")
+st.title("📦 Pesquisa de Localização de Produtos")
 
-# Upload da base de dados (já embarcada no repositório)
+# Carregando a planilha
 @st.cache_data
 def carregar_dados():
-    return pd.read_csv("produtos_por_loja.csv", sep=";", encoding="utf-8")
+    return pd.read_excel("Feedback_Localizacao.xlsx")
 
 df = carregar_dados()
 
-# Formulário de entrada inicial
-with st.form("info_inicial"):
-    col1, col2 = st.columns(2)
-    nome_conferente = col1.text_input("👤 Nome do Conferente")
-    loja = col2.selectbox("🏪 Loja", sorted(df["LOJA"].unique()))
-    data_pesquisa = st.date_input("📅 Data da Pesquisa", value=datetime.today())
-    enviar = st.form_submit_button("Iniciar")
+# Inicializa a session state
+if "respostas" not in st.session_state:
+    st.session_state.respostas = {}
 
-if enviar:
-    df_loja = df[df["LOJA"] == loja].reset_index(drop=True)
-    st.markdown(f"### Produtos para a loja **{loja}** – conferente: **{nome_conferente}**")
-    
-    respostas = []
-    
-    for idx, row in df_loja.iterrows():
-        with st.expander(f"{row['DESCRIÇÃO']} (COD: {row['COD.INT']})"):
-            st.write(f"**Estoque:** {row['ESTOQUE']} unidades")
-            st.write(f"**Dias sem movimentação:** {row['DIAS SEM MOVIMENTACAO']}")
-            
-            local = st.radio(
-                "📍 Localização do Produto:",
-                ["Seção", "Depósito", "Erro de Estoque"],
-                key=f"local_{idx}"
-            )
-            validade = st.date_input("🗓️ Validade do produto (se houver)", key=f"validade_{idx}")
-            
-            respostas.append({
-                "Conferente": nome_conferente,
-                "Loja": loja,
-                "Data da Pesquisa": data_pesquisa.strftime("%Y-%m-%d"),
-                "COD.INT": row["COD.INT"],
-                "Descrição": row["DESCRIÇÃO"],
-                "Estoque": row["ESTOQUE"],
-                "Dias sem movimentação": row["DIAS SEM MOVIMENTACAO"],
-                "Local": local,
-                "Validade": validade.strftime("%Y-%m-%d") if validade else ""
-            })
-    
-    if st.button("✅ Finalizar e Exportar Respostas"):
-        df_respostas = pd.DataFrame(respostas)
-        st.success("Respostas registradas com sucesso!")
-        st.download_button("📥 Baixar respostas em Excel", df_respostas.to_csv(index=False).encode("utf-8"), file_name="respostas_localizacao.csv", mime="text/csv")
+if "pagina" not in st.session_state:
+    st.session_state.pagina = "pesquisa"
+
+# Função para registrar respostas
+def registrar_resposta(produto, local, validade):
+    st.session_state.respostas[produto] = {
+        "local": local,
+        "validade": validade
+    }
+
+# Página de pesquisa
+if st.session_state.pagina == "pesquisa":
+    st.subheader("Preencha a localização e validade dos produtos abaixo")
+
+    todos_preenchidos = True
+
+    for index, row in df.iterrows():
+        produto = row["Produto"]
+        dias = row["Dias Sem Movimentação"]
+        estoque = row["Estoque"]
+
+        col1, col2 = st.columns([3, 2])
+
+        with col1:
+            st.markdown(f"**🔹 Produto:** {produto}<br>📆 {dias} dias sem movimentação<br>📦 Estoque: {estoque}", unsafe_allow_html=True)
+
+        with col2:
+            local = st.selectbox(f"Local - {produto}", ["", "Seção", "Depósito", "Erro de Estoque"],
+                                 key=f"local_{produto}")
+            validade = st.date_input(f"Validade - {produto}", value=None, key=f"validade_{produto}", format="DD/MM/YYYY")
+
+            if local and validade:
+                registrar_resposta(produto, local, validade)
+            else:
+                todos_preenchidos = False
+
+    if todos_preenchidos:
+        if st.button("✅ Finalizar Pesquisa"):
+            st.session_state.pagina = "finalizado"
+    else:
+        st.warning("⚠️ Preencha todos os campos obrigatórios para finalizar.")
+
+# Página de finalização
+if st.session_state.pagina == "finalizado":
+    st.success("🎉 Obrigado pela pesquisa! Suas respostas foram registradas com sucesso.")
+    st.balloons()
+
+    st.subheader("Resumo das Respostas (visível apenas para debug ou admin)")
+    resposta_df = pd.DataFrame.from_dict(st.session_state.respostas, orient='index')
+    st.dataframe(resposta_df.reset_index().rename(columns={"index": "Produto"}))
