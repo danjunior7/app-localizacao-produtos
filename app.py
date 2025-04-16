@@ -1,69 +1,35 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 
-st.set_page_config(page_title="Pesquisa de Localização de Produtos", layout="wide")
-
-st.title("📦 Pesquisa de Localização de Produtos")
-
-# Carregando a planilha
+# Função para carregar os dados da planilha
 @st.cache_data
 def carregar_dados():
     return pd.read_excel("Feedback_Localizacao.xlsx")
 
+# Carregar os dados
 df = carregar_dados()
 
-# Inicializa a session state
-if "respostas" not in st.session_state:
-    st.session_state.respostas = {}
+# Lista de locais (você pode editar conforme necessário)
+locais = ["Gôndola 1", "Gôndola 2", "Ponta de Gôndola", "Ilha", "Check-out", "Depósito", "Outro"]
 
-if "pagina" not in st.session_state:
-    st.session_state.pagina = "pesquisa"
+# Inicializar a lista de respostas
+respostas = []
 
-# Função para registrar respostas
-def registrar_resposta(produto, local, validade):
-    st.session_state.respostas[produto] = {
-        "local": local,
-        "validade": validade
-    }
+# Título da página
+st.title("Pesquisa de Localização de Produtos")
 
-# Página de pesquisa
-if st.session_state.pagina == "pesquisa":
-    st.subheader("Preencha a localização e validade dos produtos abaixo")
+# Instrução inicial
+st.info("Por favor, selecione o local onde cada produto está localizado na loja.")
 
-    todos_preenchidos = True
+# Loop pelos produtos e exibição dos campos de seleção
+for index, row in df.iterrows():
+    produto = row["DESCRIÇÃO"]  # Usando o nome correto da coluna
+    st.markdown(f"### Produto: **{produto}**")
+    local = st.selectbox(f"Selecione o local do produto '{produto}'", locais, key=index)
+    respostas.append({"Produto": produto, "Local": local})
 
-    for index, row in df.iterrows():
-        produto = row["Produto"]
-        dias = row["Dias Sem Movimentação"]
-        estoque = row["Estoque"]
-
-        col1, col2 = st.columns([3, 2])
-
-        with col1:
-            st.markdown(f"**🔹 Produto:** {produto}<br>📆 {dias} dias sem movimentação<br>📦 Estoque: {estoque}", unsafe_allow_html=True)
-
-        with col2:
-            local = st.selectbox(f"Local - {produto}", ["", "Seção", "Depósito", "Erro de Estoque"],
-                                 key=f"local_{produto}")
-            validade = st.date_input(f"Validade - {produto}", value=None, key=f"validade_{produto}", format="DD/MM/YYYY")
-
-            if local and validade:
-                registrar_resposta(produto, local, validade)
-            else:
-                todos_preenchidos = False
-
-    if todos_preenchidos:
-        if st.button("✅ Finalizar Pesquisa"):
-            st.session_state.pagina = "finalizado"
-    else:
-        st.warning("⚠️ Preencha todos os campos obrigatórios para finalizar.")
-
-# Página de finalização
-if st.session_state.pagina == "finalizado":
-    st.success("🎉 Obrigado pela pesquisa! Suas respostas foram registradas com sucesso.")
-    st.balloons()
-
-    st.subheader("Resumo das Respostas (visível apenas para debug ou admin)")
-    resposta_df = pd.DataFrame.from_dict(st.session_state.respostas, orient='index')
-    st.dataframe(resposta_df.reset_index().rename(columns={"index": "Produto"}))
+# Botão de finalizar
+if st.button("Finalizar Pesquisa"):
+    df_respostas = pd.DataFrame(respostas)
+    df_respostas.to_excel("respostas_localizacao.xlsx", index=False)
+    st.success("Obrigado! Sua resposta foi registrada com sucesso.")
